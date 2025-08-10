@@ -1,0 +1,114 @@
+/* styles.css */
+/* Center page and provide layer styling */
+
+@import url('https://fonts.googleapis.com/css2?family=Jersey+25&display=swap');
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: #fbc1d0;
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+
+.app-root {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  padding: 24px;
+}
+
+/* The outer TV wrapper: fixed width 500px, aspect from SVG, centered */
+.tv-wrap {
+  position: relative;
+  width: 500px;
+  max-width: 90vw;
+  /* height auto via aspect-ratio set inline from SVG root viewBox */
+}
+
+/* TV background image */
+.tv-bg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* Region that matches the SVG's "grid overlay" bounding box */
+.screen-region {
+  position: absolute;
+  /* left, top, width, height are set inline from computed percentages */
+}
+
+/* The grid SVG sits flush in the screen region */
+.grid-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Click + token layer overlays the same region as the grid */
+.cells-grid {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+}
+
+.cell {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+/* Keep pixel art crisp if applicable */
+.token-frame {
+  image-rendering: pixelated;
+}
+
+/* Shine overlay on top */
+.tv-shine {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  mix-blend-mode: screen;
+  opacity: 0.85;
+}
+
+/* Light loading indicator */
+.loading {
+  color: #aaa;
+  font-size: 14px;
+}
+
+@keyframes token-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Blink animation for winning tokens */
+@keyframes blinkOpacity { /* define keyframes for blinking */
+  0% { opacity: 1; }      /* fully visible at start */
+  50% { opacity: 0; }     /* invisible halfway through */
+  100% { opacity: 1; }    /* back to visible at end */
+}
+
+.token-blink {                 /* class to apply the blink effect */
+  animation: blinkOpacity 0.8s steps(1) infinite; /* hard on/off flicker, loops forever */
+}
+

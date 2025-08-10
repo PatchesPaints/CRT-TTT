@@ -1,0 +1,499 @@
+/// src\styles.css
+
+/* styles.css */
+/* Center page and provide layer styling */
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: #0f0f10;
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+
+.app-root {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  padding: 24px;
+}
+
+/* The outer TV wrapper: fixed width 500px, aspect from SVG, centered */
+.tv-wrap {
+  position: relative;
+  width: 500px;
+  max-width: 90vw;
+  /* height auto via aspect-ratio set inline from SVG root viewBox */
+}
+
+/* TV background image */
+.tv-bg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* Region that matches the SVG's "grid overlay" bounding box */
+.screen-region {
+  position: absolute;
+  /* left, top, width, height are set inline from computed percentages */
+}
+
+/* The grid SVG sits flush in the screen region */
+.grid-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Click + token layer overlays the same region as the grid */
+.cells-grid {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+}
+
+.cell {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+/* Keep pixel art crisp if applicable */
+.token-frame {
+  image-rendering: pixelated;
+}
+
+/* Shine overlay on top */
+.tv-shine {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  mix-blend-mode: screen;
+  opacity: 0.85;
+}
+
+/* Light loading indicator */
+.loading {
+  color: #aaa;
+  font-size: 14px;
+}
+
+
+/// src\index.jsx
+
+import React from "react";
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import "./styles.css";
+
+import App from "./App.jsx";
+
+const root = createRoot(document.getElementById("root"));
+root.render(
+  <StrictMode>
+    <App />
+  </StrictMode>
+);
+
+/// src\App.jsx
+
+// App.jsx
+// Top-level component: centers the Board.
+
+import React from "react";
+import Board from "./components/Board.jsx";
+
+export default function App() {
+  return (
+    <div className="app-root">
+      <Board />
+    </div>
+  );
+}
+
+
+/// src\components\Square.jsx
+
+// components/Square.jsx
+// (Not used in this layout anymore) — kept for compatibility.
+// If you still import Square somewhere, this safe stub prevents errors.
+
+import React from "react"; // import React
+
+export default function Square() { // export a no-op square
+  return null; // render nothing
+} // end Square
+
+
+/// src\components\Board.jsx
+
+// components/Board.jsx
+// Renders the TV board UI with layers: TV background (PNG), grid+tokens overlay, shine overlay (PNG).
+// Uses a hidden-but-measurable React SVG (LayoutSVG.jsx) to read the exact on-screen rectangle for the game area.
+// Aligns a 3×3 grid and clickable cells to that rectangle.
+// Tokens are rendered at their native PNG size (no scaling) for crisp edges; they’re centered within each cell.
+
+import React, { useRef, useState, useLayoutEffect, useEffect } from "react"; // import React and needed hooks
+import LayoutSVG from "./Graphics/LayoutSVG.jsx"; // import the SVG-as-React component (used only for measurement)
+import Token from "./Tokens/Token.jsx"; // import the animated token component (plays frames once)
+
+import tvBg from "./Graphics/board_bg.PNG"; // import bottom TV background image
+import shineOverlay from "./Graphics/overlay.PNG"; // import top shine overlay image
+
+// --- X token frames (native size, no resizing in code) ---
+import x1 from "./Graphics/tokens/x1.PNG"; // X frame 1
+import x2 from "./Graphics/tokens/x2.PNG"; // X frame 2
+import x3 from "./Graphics/tokens/x3.PNG"; // X frame 3
+import x4 from "./Graphics/tokens/x4.PNG"; // X frame 4
+import x5 from "./Graphics/tokens/x5.PNG"; // X frame 5
+
+// --- O token frames (native size, no resizing in code) ---
+import o1 from "./Graphics/tokens/o1.PNG"; // O frame 1
+import o2 from "./Graphics/tokens/o2.PNG"; // O frame 2
+import o3 from "./Graphics/tokens/o3.PNG"; // O frame 3
+import o4 from "./Graphics/tokens/o4.PNG"; // O frame 4
+import o5 from "./Graphics/tokens/o5.PNG"; // O frame 5
+
+const X_FRAMES = [x1, x2, x3, x4, x5]; // collect X frames in order
+const O_FRAMES = [o1, o2, o3, o4, o5]; // collect O frames in order
+
+const GRID_GROUP_ID = "shape-573f3699-be59-8001-8006-9f6abe0e40f0"; // id of the group in your SVG that contains the measuring rect
+const SVG_WIDTH_UNITS = 2048; // the width of the SVG coordinate system (from your SVG’s viewBox 0 0 2048 2048)
+
+export default function Board() { // export the Board component
+  const [squares, setSquares] = useState(Array(9).fill(null)); // 3×3 board values (X/O/null)
+  const [xIsNext, setXIsNext] = useState(true); // track whose turn it is; X starts (UI for turn is currently hidden)
+  const [gridRect, setGridRect] = useState(null); // measured rectangle from SVG: { x, y, w, h } in SVG units
+
+  const svgRef = useRef(null); // ref to the <svg> element inside LayoutSVG so we can query and measure
+
+  useLayoutEffect(() => { // run after DOM updates to measure sizes accurately
+    console.log("[Board] useLayoutEffect: measuring SVG…"); // debug: starting measurement
+    const svgEl = svgRef.current; // get the actual <svg> DOM node
+    console.log("[Board] svgRef.current:", svgEl); // debug: show the ref target
+    if (!svgEl) return; // guard: if ref not attached yet, stop
+
+    const selector = `#${GRID_GROUP_ID} rect`; // CSS selector to find the rect inside the known group id
+    const rectNode = svgEl.querySelector(selector); // find the rect node
+    console.log("[Board] rect selector:", selector, "found:", !!rectNode, rectNode); // debug: did we find it?
+
+    if (rectNode && typeof rectNode.getBBox === "function") { // ensure node exists and supports getBBox
+      const b = rectNode.getBBox(); // read its bounding box in SVG units
+      console.log("[Board] rect getBBox():", b); // debug: print the box
+      setGridRect({ x: b.x, y: b.y, w: b.width, h: b.height }); // save the measured box to state
+    } else { // if measurement couldn’t happen
+      console.warn("[Board] Could not getBBox() from rect. Is the SVG rendered/visible?"); // debug: warn
+    }
+  }, []); // empty deps → run once after first render
+
+  useEffect(() => { // debug effect to observe gridRect changes
+    console.log("[Board] gridRect state changed:", gridRect); // debug: show new value
+  }, [gridRect]); // re-run log when gridRect updates
+
+  const onCellClick = (i) => { // handler for clicking grid cells (0..8)
+    if (squares[i]) return; // ignore click if this cell already has a token
+    const next = squares.slice(); // copy the array (immutably)
+    next[i] = xIsNext ? "X" : "O"; // place the correct token
+    setSquares(next); // update board state
+    setXIsNext(!xIsNext); // flip player for next move
+  }; // end onCellClick
+
+  const WRAP_PX = 500; // fixed TV width in CSS pixels; change this to scale everything proportionally
+
+  return ( // render the UI
+    <div style={{ width: WRAP_PX, margin: "0 auto", position: "relative" }}> {/* center the TV at fixed width */}
+      <img src={tvBg} alt="TV" style={{ width: "100%", display: "block" }} /> {/* bottom layer: TV PNG */}
+
+      {gridRect ? ( // only render overlays after we measured the SVG rect
+        (() => { // IIFE so we can compute some local constants
+          const leftPx = Math.round((gridRect.x / SVG_WIDTH_UNITS) * WRAP_PX); // pixel left offset, snapped to integer
+          const topPx = Math.round((gridRect.y / SVG_WIDTH_UNITS) * WRAP_PX); // pixel top offset, snapped to integer
+          const wPx = Math.round((gridRect.w / SVG_WIDTH_UNITS) * WRAP_PX); // pixel width of the measured area, snapped
+          const hPx = Math.round((gridRect.h / SVG_WIDTH_UNITS) * WRAP_PX); // pixel height of the measured area, snapped
+
+          const cellW = Math.floor(wPx / 3); // width of each of 3 columns (integer to avoid subpixel blur)
+          const cellH = Math.floor(hPx / 3); // height of each of 3 rows (integer to avoid subpixel blur)
+          const overlayW = cellW * 3; // overlay width clamped to exactly 3 whole cells
+          const overlayH = cellH * 3; // overlay height clamped to exactly 3 whole cells
+
+          console.log("[Board] overlay px:", { leftPx, topPx, wPx, hPx, cellW, cellH, overlayW, overlayH }); // debug sizes
+
+          return ( // return the overlay block
+            <div
+              style={{
+                position: "absolute", // overlay sits on top of the TV
+                left: `${leftPx}px`, // integer-aligned left
+                top: `${topPx}px`, // integer-aligned top
+                width: `${overlayW}px`, // exact width (3 cells)
+                height: `${overlayH}px`, // exact height (3 cells)
+                outline: "none", // no outline
+              }}
+            >
+              <svg
+                viewBox={`0 0 ${overlayW} ${overlayH}`} // define a pixel-accurate coordinate system for grid lines
+                style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} // fill overlay area
+              >
+                <line x1={cellW} y1={0} x2={cellW} y2={overlayH} stroke="white" strokeWidth={5} /> {/* 1st vertical */}
+                <line x1={cellW * 2} y1={0} x2={cellW * 2} y2={overlayH} stroke="white" strokeWidth={5} /> {/* 2nd vertical */}
+                <line x1={0} y1={cellH} x2={overlayW} y2={cellH} stroke="white" strokeWidth={5} /> {/* 1st horizontal */}
+                <line x1={0} y1={cellH * 2} x2={overlayW} y2={cellH * 2} stroke="white" strokeWidth={5} /> {/* 2nd horizontal */}
+              </svg>
+
+              <div
+                style={{
+                  position: "absolute", // sits over the lines for interaction/tokens
+                  inset: 0, // fill the overlay
+                  display: "grid", // use CSS grid for 3×3 layout
+                  gridTemplateColumns: `repeat(3, ${cellW}px)`, // three fixed-width columns
+                  gridTemplateRows: `repeat(3, ${cellH}px)`, // three fixed-height rows
+                }}
+              >
+                {squares.map((v, i) => ( // render 9 cells
+                  <button
+                    key={i} // unique key
+                    onClick={() => onCellClick(i)} // place token on click
+                    style={{
+                      position: "relative", // so the token can be centered absolutely inside
+                      background: "none", // transparent button background
+                      border: "none", // no native button border
+                      padding: 0, // remove default padding
+                      margin: 0, // remove default margin
+                      overflow: "hidden", // keep native-size tokens from spilling outside the cell
+                      cursor: "pointer", // pointer cursor for better UX
+                    }}
+                    aria-label={`Cell ${i}`} // accessibility label
+                  >
+                    {v === "X" && <Token frames={X_FRAMES} durationMs={500} />} {/* render X frames (native size) */}
+                    {v === "O" && <Token frames={O_FRAMES} durationMs={500} />} {/* render O frames (native size) */}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ); // end overlay return
+        })() // end IIFE
+      ) : ( // if we don’t have gridRect yet, show a small measuring note
+        <div
+          style={{
+            position: "absolute", // cover the TV area while measuring
+            inset: 0, // fill parent
+            display: "grid", // center content
+            placeItems: "center", // center horizontally and vertically
+            color: "#999", // subtle status color
+            fontSize: 12, // small text
+          }}
+        >
+          <span>Measuring layout… (check console logs)</span> {/* message while waiting for measurement */}
+        </div>
+      )}
+
+      <img
+        src={shineOverlay} // top-most shine overlay image
+        alt="Shine" // decorative image (no semantic meaning)
+        style={{
+          position: "absolute", // sits on top of everything
+          inset: 0, // cover full wrapper
+          width: "100%", // match wrapper width
+          height: "100%", // match wrapper height
+          pointerEvents: "none", // allow clicks to pass through to the grid/buttons
+        }}
+      />
+
+      <div
+        style={{
+          position: "absolute", // keep in the DOM flow for measurement
+          left: "-9999px", // move way offscreen (not display:none, so getBBox still works)
+          top: "-9999px", // move way offscreen vertically
+        }}
+      >
+        <LayoutSVG ref={svgRef} /> {/* hidden SVG: attaches ref to <svg> so we can query and measure */}
+      </div>
+    </div>
+  ); // end render
+} // end Board component
+
+
+/// src\utils\calculateWinner.js
+
+// utils/calculateWinner.js
+// Given the current squares array, determines if there is a winner.
+// Returns "X", "O", or null.
+
+export default function calculateWinner(squares) {
+  // All possible winning line combinations (by index in squares array)
+  const lines = [
+    [0, 1, 2], // top row
+    [3, 4, 5], // middle row
+    [6, 7, 8], // bottom row
+    [0, 3, 6], // left column
+    [1, 4, 7], // middle column
+    [2, 5, 8], // right column
+    [0, 4, 8], // diagonal top-left to bottom-right
+    [2, 4, 6], // diagonal top-right to bottom-left
+  ];
+
+  // Loop through all winning lines to see if one is filled
+  for (let i = 0; i < lines.length; i++) {
+    const [a, b, c] = lines[i];
+    // If square a is filled AND all three match, we have a winner
+    if (squares[a] && squares[a] === squares[b] && squares[a] === squares[c]) {
+      return squares[a]; // either "X" or "O"
+    }
+  }
+
+  // No winner found
+  return null;
+}
+
+
+/// src\components\Tokens\Token.jsx
+
+// components/Tokens/Token.jsx
+// Plays a frame-by-frame PNG sequence once, then holds the last frame.
+// Updated to render frames at their native pixel size (no scaling) for crisp edges.
+// Frames are centered absolutely within the cell.
+
+import React, { useEffect, useRef, useState, useMemo } from "react"; // import React and hooks
+
+export default function Token({
+  frames = [],        // array of frame image URLs in order
+  durationMs = 500,   // total animation duration in milliseconds
+  className = "",     // optional extra class names
+}) {
+  const [idx, setIdx] = useState(0);               // current frame index
+  const last = Math.max(0, frames.length - 1);     // index of the last frame
+  const timerRef = useRef(null);                   // ref to store interval ID
+
+  // Time per frame (minimum ~60fps)
+  const perFrame = useMemo(() => {
+    if (frames.length <= 1) return durationMs;
+    return Math.max(16, Math.floor(durationMs / frames.length));
+  }, [frames.length, durationMs]);
+
+  // Animation loop
+  useEffect(() => {
+    if (frames.length <= 1) return; // nothing to animate
+    setIdx(0); // start at first frame
+    timerRef.current = setInterval(() => {
+      setIdx((cur) => {
+        if (cur >= last) {
+          clearInterval(timerRef.current); // stop at final frame
+          return last;
+        }
+        return cur + 1;
+      });
+    }, perFrame);
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [frames, perFrame, last]);
+
+  const src = frames[Math.min(idx, last)] || ""; // pick the current frame
+
+  return (
+    <span
+      className={`token-wrap ${className}`}
+      style={{
+        position: "absolute",
+        left: "50%",
+        top: "50%",
+        transform: "translate(-50%, -50%)", // center within the cell
+        pointerEvents: "none",
+      }}
+    >
+      <img
+        src={src}
+        alt=""
+        draggable="false"
+        style={{
+          width: "auto",         // native image width
+          height: "auto",        // native image height
+          maxWidth: "none",      // don’t downscale
+          maxHeight: "none",     // don’t downscale
+          display: "block",
+          imageRendering: "pixelated", // crisp edges in Chrome/Edge/Firefox
+          imageRendering: "crisp-edges", // crisp edges in Safari
+        }}
+      />
+    </span>
+  );
+}
+
+
+/// src\components\Graphics\LayoutSVG.jsx
+
+// components/Graphics/LayoutSVG.jsx
+// React component version of your layout.svg for use in Board.jsx.
+// Uses forwardRef so Board can directly measure the <rect> element.
+
+import React, { forwardRef } from "react";
+
+const LayoutSVG = forwardRef(function LayoutSVG(props, ref) {
+  return (
+    <svg
+      ref={ref}
+      width={2048}
+      height={2048}
+      viewBox="0 0 2048 2048"
+      xmlns="http://www.w3.org/2000/svg"
+      xmlnsXlink="http://www.w3.org/1999/xlink"
+      fill="none"
+      id="screenshot-573f3699-be59-8001-8006-9f6bab2830ef"
+      {...props}
+    >
+      <g id="shape-573f3699-be59-8001-8006-9f6bab2830ef">
+        {/* The group that contains our target measurement rect */}
+        <g id="shape-573f3699-be59-8001-8006-9f6abe0e40f0">
+          <rect
+            x={528}
+            y={396}
+            width={770}
+            height={770}
+            style={{
+              fill: "transparent", // invisible in UI
+              fillOpacity: 0,
+            }}
+          />
+        </g>
+      </g>
+    </svg>
+  );
+});
+
+export default LayoutSVG;
+
+
+/// index.html
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tic Tac Toe</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/index.jsx"></script>
+  </body>
+</html>
+
+
