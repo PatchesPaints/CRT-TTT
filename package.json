@@ -8,7 +8,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "predeploy": "vite build",
+    "deploy": "gh-pages -d dist"
+    
   },
   "keywords": [],
   "author": "",
@@ -19,6 +22,15 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.0.0",
+    "gh-pages": "^6.3.0",
     "vite": "^7.1.1"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PatchesPaints/CRT-TTT.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PatchesPaints/CRT-TTT/issues"
+  },
+  "homepage": "https://github.com/PatchesPaints/CRT-TTT#readme"
 }
