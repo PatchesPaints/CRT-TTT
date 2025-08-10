@@ -294,6 +294,23 @@ export default function Board() {
       <div style={{ position: "absolute", left: "-9999px", top: "-9999px" }}>
         <LayoutSVG ref={svgRef} />
       </div>
+      <a
+  href="https://github.com/PatchesPaints/CRT-TTT"
+  target="_blank"
+  rel="noopener noreferrer"
+  style={{
+    display: "block",
+    marginTop: "12px",
+    textAlign: "center",
+    color: "#7e4a70",
+    textDecoration: "none",
+    fontFamily: "'Jersey 25', sans-serif",
+    fontSize: "15px",
+  }}
+>
+  Here's the Github Repo
+</a>
+
     </div>
   );
 }
